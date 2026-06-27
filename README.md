@@ -13,8 +13,13 @@ Built for practical data automation work: normalize headers, trim messy strings,
 - normalizes column names to `snake_case`
 - trims whitespace in text columns
 - normalizes email columns
+- validates email columns and adds `*_is_valid` quality flags
+- coerces numeric-looking columns such as spend, price, amount, orders, and revenue
+- flags numeric outliers with IQR-based `*_is_outlier` columns
+- infers basic column types for the report
 - removes duplicate rows
 - fills missing values from a JSON profile
+- validates the final table shape with Pandera
 - exports clean CSV or Excel
 - writes a Markdown report with row counts, duplicate counts, missing values, and changed columns
 
@@ -55,6 +60,10 @@ The report includes:
 - duplicates removed
 - missing values before and after cleaning
 - renamed columns
+- inferred column types
+- invalid email counts
+- numeric outlier counts
+- Pandera validation status
 - exported file path
 
 ## Run Tests

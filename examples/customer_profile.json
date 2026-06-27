@@ -2,9 +2,14 @@
   "normalize_headers": true,
   "trim_text": true,
   "normalize_emails": true,
+  "validate_emails": true,
+  "coerce_numeric": true,
+  "flag_outliers": true,
   "drop_duplicates": true,
+  "numeric_columns": ["total_spend", "orders"],
+  "outlier_iqr_multiplier": 1.5,
   "fill_missing": {
     "total_spend": 0,
-    "email_address": "missing@example.com"
+    "segment": "unknown"
   }
 }

@@ -5,10 +5,12 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from pydantic import BaseModel, ConfigDict, Field
+import pandera.pandas as pa
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 COLUMN_RE = re.compile(r"[^a-zA-Z0-9]+")
 EMAIL_RE = re.compile(r"email", re.IGNORECASE)
+EMAIL_ADAPTER = TypeAdapter(str)
 
 
 class CleaningOptions(BaseModel):
@@ -17,8 +19,13 @@ class CleaningOptions(BaseModel):
     normalize_headers: bool = True
     trim_text: bool = True
     normalize_emails: bool = True
+    validate_emails: bool = True
+    coerce_numeric: bool = True
+    flag_outliers: bool = True
     drop_duplicates: bool = True
     fill_missing: dict[str, str | int | float | bool] = Field(default_factory=dict)
+    numeric_columns: list[str] = Field(default_factory=list)
+    outlier_iqr_multiplier: float = Field(default=1.5, gt=0)
 
 
 class CleaningReport(BaseModel):
@@ -32,6 +39,10 @@ class CleaningReport(BaseModel):
     duplicates_removed: int
     missing_before: dict[str, int]
     missing_after: dict[str, int]
+    inferred_types: dict[str, str]
+    invalid_email_counts: dict[str, int]
+    outlier_counts: dict[str, int]
+    validation_errors: list[str]
     output_path: Path | None = None
 
     def to_markdown(self) -> str:
@@ -55,6 +66,31 @@ class CleaningReport(BaseModel):
         lines.extend(["", "## Missing Values After Cleaning", ""])
         for column, count in self.missing_after.items():
             lines.append(f"- `{column}`: `{count}`")
+
+        lines.extend(["", "## Inferred Column Types", ""])
+        for column, dtype in self.inferred_types.items():
+            lines.append(f"- `{column}`: `{dtype}`")
+
+        lines.extend(["", "## Email Validation", ""])
+        if self.invalid_email_counts:
+            for column, count in self.invalid_email_counts.items():
+                lines.append(f"- `{column}` invalid emails: `{count}`")
+        else:
+            lines.append("- No email columns detected.")
+
+        lines.extend(["", "## Numeric Outliers", ""])
+        if self.outlier_counts:
+            for column, count in self.outlier_counts.items():
+                lines.append(f"- `{column}` outliers flagged: `{count}`")
+        else:
+            lines.append("- No numeric outliers flagged.")
+
+        lines.extend(["", "## Validation", ""])
+        if self.validation_errors:
+            for error in self.validation_errors:
+                lines.append(f"- `{error}`")
+        else:
+            lines.append("- Pandera validation passed.")
 
         return "\n".join(lines) + "\n"
 
@@ -120,10 +156,26 @@ def clean_frame(
         with pd.option_context("future.no_silent_downcasting", True):
             cleaned = cleaned.fillna(options.fill_missing).infer_objects(copy=False)
 
+    if options.coerce_numeric:
+        cleaned = _coerce_numeric_columns(cleaned, options.numeric_columns)
+
+    invalid_email_counts: dict[str, int] = {}
+    if options.validate_emails:
+        cleaned, invalid_email_counts = _flag_invalid_email_columns(cleaned)
+
+    outlier_counts: dict[str, int] = {}
+    if options.flag_outliers:
+        cleaned, outlier_counts = _flag_numeric_outliers(
+            cleaned,
+            multiplier=options.outlier_iqr_multiplier,
+        )
+
     before_dedup = len(cleaned)
     if options.drop_duplicates:
         cleaned = cleaned.drop_duplicates().reset_index(drop=True)
     duplicates_removed = before_dedup - len(cleaned)
+    inferred_types = _infer_column_types(cleaned)
+    validation_errors = _validate_cleaned_frame(cleaned)
 
     report = CleaningReport(
         input_rows=len(original),
@@ -134,6 +186,10 @@ def clean_frame(
         duplicates_removed=duplicates_removed,
         missing_before=missing_before,
         missing_after=_missing_counts(cleaned),
+        inferred_types=inferred_types,
+        invalid_email_counts=invalid_email_counts,
+        outlier_counts=outlier_counts,
+        validation_errors=validation_errors,
     )
     return cleaned, report
 
@@ -176,6 +232,134 @@ def _normalize_email_value(value: Any) -> Any:
         return value
     normalized = value.strip().lower()
     return normalized or pd.NA
+
+
+def _flag_invalid_email_columns(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
+    cleaned = frame.copy()
+    counts: dict[str, int] = {}
+    for column in cleaned.columns:
+        if not EMAIL_RE.search(str(column)) or str(column).endswith("_is_valid"):
+            continue
+        validity_column = f"{column}_is_valid"
+        cleaned[validity_column] = cleaned[column].map(_is_valid_email)
+        counts[str(column)] = int((cleaned[validity_column] == False).sum())  # noqa: E712
+    return cleaned, counts
+
+
+def _is_valid_email(value: Any) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    try:
+        EMAIL_ADAPTER.validate_python(value)
+    except ValueError:
+        return False
+    return "@" in value and "." in value.rsplit("@", maxsplit=1)[-1]
+
+
+def _coerce_numeric_columns(frame: pd.DataFrame, numeric_columns: list[str]) -> pd.DataFrame:
+    cleaned = frame.copy()
+    candidates = numeric_columns or [
+        str(column)
+        for column in cleaned.columns
+        if _looks_numeric_series(cleaned[column]) or _looks_numeric_name(str(column))
+    ]
+    for column in candidates:
+        if column in cleaned.columns:
+            cleaned[column] = pd.to_numeric(
+                cleaned[column].map(_strip_numeric_value),
+                errors="coerce",
+            )
+    return cleaned
+
+
+def _strip_numeric_value(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    cleaned = value.replace("$", "").replace(",", "").strip()
+    return cleaned or pd.NA
+
+
+def _looks_numeric_name(column: str) -> bool:
+    tokens = ("amount", "price", "spend", "revenue", "total", "payment", "usage")
+    return any(token in column.lower() for token in tokens)
+
+
+def _looks_numeric_series(series: pd.Series) -> bool:
+    if not pd.api.types.is_object_dtype(series):
+        return pd.api.types.is_numeric_dtype(series)
+    non_null = series.dropna()
+    if non_null.empty:
+        return False
+    converted = pd.to_numeric(non_null.map(_strip_numeric_value), errors="coerce")
+    return float(converted.notna().mean()) >= 0.8
+
+
+def _flag_numeric_outliers(
+    frame: pd.DataFrame,
+    *,
+    multiplier: float,
+) -> tuple[pd.DataFrame, dict[str, int]]:
+    cleaned = frame.copy()
+    counts: dict[str, int] = {}
+    for column in cleaned.select_dtypes(include="number").columns:
+        series = cleaned[column].dropna()
+        if len(series) < 4:
+            continue
+        q1 = float(series.quantile(0.25))
+        q3 = float(series.quantile(0.75))
+        iqr = q3 - q1
+        if iqr == 0:
+            continue
+        lower = q1 - multiplier * iqr
+        upper = q3 + multiplier * iqr
+        flag_column = f"{column}_is_outlier"
+        cleaned[flag_column] = (cleaned[column] < lower) | (cleaned[column] > upper)
+        counts[str(column)] = int(cleaned[flag_column].sum())
+    return cleaned, counts
+
+
+def _infer_column_types(frame: pd.DataFrame) -> dict[str, str]:
+    inferred: dict[str, str] = {}
+    for column in frame.columns:
+        series = frame[column]
+        if pd.api.types.is_bool_dtype(series):
+            inferred[str(column)] = "boolean"
+        elif pd.api.types.is_numeric_dtype(series):
+            inferred[str(column)] = "numeric"
+        elif pd.api.types.is_datetime64_any_dtype(series):
+            inferred[str(column)] = "datetime"
+        elif EMAIL_RE.search(str(column)):
+            inferred[str(column)] = "email"
+        else:
+            inferred[str(column)] = "datetime" if _looks_datetime_series(series) else "text"
+    return inferred
+
+
+def _looks_datetime_series(series: pd.Series) -> bool:
+    non_null = series.dropna()
+    if non_null.empty or not pd.api.types.is_object_dtype(non_null):
+        return False
+    sample = non_null.astype(str)
+    if not sample.str.contains(r"\d{4}-\d{2}-\d{2}", regex=True).mean() >= 0.8:
+        return False
+    parsed_dates = pd.to_datetime(sample, errors="coerce", format="mixed")
+    return bool(parsed_dates.notna().mean() >= 0.8)
+
+
+def _validate_cleaned_frame(frame: pd.DataFrame) -> list[str]:
+    schema = pa.DataFrameSchema(
+        {
+            str(column): pa.Column(nullable=True)
+            for column in frame.columns
+        },
+        strict=True,
+        coerce=False,
+    )
+    try:
+        schema.validate(frame, lazy=True)
+    except pa.errors.SchemaErrors as exc:
+        return [str(error) for error in exc.failure_cases["failure_case"].head(10).tolist()]
+    return []
 
 
 def _missing_counts(frame: pd.DataFrame) -> dict[str, int]:

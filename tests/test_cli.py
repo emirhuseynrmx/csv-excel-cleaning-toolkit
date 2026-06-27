@@ -21,6 +21,6 @@ def test_cli_clean_command(tmp_path) -> None:
     )
 
     assert result.exit_code == 0
-    assert "Cleaned 4 rows" in result.output
+    assert "Cleaned 5 rows" in result.output
     assert output_path.exists()
     assert report_path.exists()

@@ -29,11 +29,18 @@ def test_clean_frame_normalizes_headers_emails_and_duplicates() -> None:
 
     cleaned, report = clean_frame(frame)
 
-    assert list(cleaned.columns) == ["customer_name", "email_address", "total_spend"]
+    assert list(cleaned.columns) == [
+        "customer_name",
+        "email_address",
+        "total_spend",
+        "email_address_is_valid",
+    ]
     assert cleaned.loc[0, "customer_name"] == "Alice"
     assert cleaned.loc[0, "email_address"] == "alice@example.com"
+    assert bool(cleaned.loc[0, "email_address_is_valid"]) is True
     assert len(cleaned) == 1
     assert report.duplicates_removed == 1
+    assert report.invalid_email_counts == {"email_address": 0}
 
 
 def test_clean_frame_fills_missing_values() -> None:
@@ -46,7 +53,33 @@ def test_clean_frame_fills_missing_values() -> None:
 
     assert cleaned.loc[0, "email_address"] == "missing@example.com"
     assert cleaned.loc[0, "total_spend"] == 0
-    assert report.missing_after == {"email_address": 0, "total_spend": 0}
+    assert report.missing_after == {
+        "email_address": 0,
+        "total_spend": 0,
+        "email_address_is_valid": 0,
+    }
+
+
+def test_clean_frame_flags_invalid_emails_and_numeric_outliers() -> None:
+    frame = pd.DataFrame(
+        {
+            "Email Address": [
+                "good@example.com",
+                "bad-email",
+                "other@example.com",
+                "x@example.com",
+            ],
+            "Total Spend": ["10", "11", "12", "999"],
+        }
+    )
+
+    cleaned, report = clean_frame(frame)
+
+    assert bool(cleaned.loc[1, "email_address_is_valid"]) is False
+    assert cleaned["total_spend"].dtype.kind in {"i", "f"}
+    assert cleaned["total_spend_is_outlier"].sum() == 1
+    assert report.invalid_email_counts == {"email_address": 1}
+    assert report.outlier_counts == {"total_spend": 1}
 
 
 def test_clean_file_writes_output_and_report(tmp_path: Path) -> None:
@@ -57,6 +90,6 @@ def test_clean_file_writes_output_and_report(tmp_path: Path) -> None:
     cleaned, report = clean_file(input_path, output_path, CleaningOptions())
     write_report(report, report_path)
 
-    assert len(cleaned) == 4
+    assert len(cleaned) == 5
     assert output_path.exists()
     assert "# Cleaning Report" in report_path.read_text(encoding="utf-8")
