@@ -1,0 +1,10 @@
+{
+  "normalize_headers": true,
+  "trim_text": true,
+  "normalize_emails": true,
+  "drop_duplicates": true,
+  "fill_missing": {
+    "total_spend": 0,
+    "email_address": "missing@example.com"
+  }
+}

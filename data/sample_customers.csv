@@ -1,0 +1,6 @@
+ Customer Name , Email Address , Signup Date , Total Spend , Status
+ Alice Johnson , ALICE@example.COM ,2026-01-03, 120.50 , active
+Bob Smith,bob@example.com,2026-01-04,80.00,active
+ Alice Johnson , ALICE@example.COM ,2026-01-03, 120.50 , active
+Carla Reyes, ,2026-01-08,, inactive
+Diego Martins, DIEGO@Example.com ,2026-01-09,210.75, active
