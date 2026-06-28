@@ -41,6 +41,8 @@ Sample report files:
 - `outputs/sample_report/cleaning_report.typ`
 - `outputs/sample_report/cleaning_report.pdf`
 
+![Sample cleaning report](docs/assets/cleaning-report-preview.png)
+
 Use a cleaning profile:
 
 ```bash
