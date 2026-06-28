@@ -28,13 +28,14 @@ dev = [
 
 [project.scripts]
 clean-data = "csv_excel_cleaning_toolkit.cli:app"
+generate-cleaning-report = "csv_excel_cleaning_toolkit.reporting:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=csv_excel_cleaning_toolkit --cov-report=term-missing"
+addopts = "--basetemp=.pytest_tmp --cov=csv_excel_cleaning_toolkit --cov-report=term-missing"
 
 [tool.ruff]
 line-length = 100

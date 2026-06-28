@@ -1,0 +1,6 @@
+customer_name,email_address,signup_date,total_spend,orders,segment,status,email_address_is_valid,total_spend_is_outlier,orders_is_outlier
+Alice Johnson,alice@example.com,2026-01-03,120.5,4,Retail,active,True,False,False
+Bob Smith,bob@example.com,2026-01-04,80.0,2,Retail,active,True,False,False
+Carla Reyes,bad-email,2026-01-08,,1,Wholesale,inactive,False,False,False
+Diego Martins,diego@example.com,2026-01-09,210.75,6,Wholesale,active,True,False,False
+Nora Lee,nora@example.com,2026-01-10,9999.0,1,Enterprise,active,True,True,False

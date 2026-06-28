@@ -30,6 +30,17 @@ pip install -e ".[dev]"
 clean-data data/sample_customers.csv --out outputs/customers_clean.csv --report outputs/report.md
 ```
 
+Generate a client-ready PDF report with Typst:
+
+```bash
+generate-cleaning-report data/sample_customers.csv --out outputs/sample_report
+```
+
+Sample report files:
+
+- `outputs/sample_report/cleaning_report.typ`
+- `outputs/sample_report/cleaning_report.pdf`
+
 Use a cleaning profile:
 
 ```bash
