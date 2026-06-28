@@ -5,7 +5,9 @@
 
 Reusable Python toolkit for cleaning messy CSV and Excel files into analysis-ready outputs.
 
-Built for practical data automation work: normalize headers, trim messy strings, standardize emails, remove duplicates, fill missing values, and generate a clear cleaning report.
+Built for practical data automation work: normalize headers, trim messy strings,
+standardize emails, remove duplicates, fill missing values, and generate a clear
+cleaning report.
 
 ## What It Does
 
@@ -30,7 +32,7 @@ pip install -e ".[dev]"
 clean-data data/sample_customers.csv --out outputs/customers_clean.csv --report outputs/report.md
 ```
 
-Generate a client-ready PDF report with Typst:
+Generate a PDF report with Typst:
 
 ```bash
 generate-cleaning-report data/sample_customers.csv --out outputs/sample_report
@@ -93,7 +95,7 @@ pytest
 - email list normalization
 - CRM import preparation
 - deduplication before outreach
-- repeatable small-business data workflows
+- repeatable tabular data workflows
 
 ## Scope
 
