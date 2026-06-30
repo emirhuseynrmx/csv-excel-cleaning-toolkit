@@ -281,8 +281,10 @@ def _looks_numeric_name(column: str) -> bool:
 
 
 def _looks_numeric_series(series: pd.Series) -> bool:
-    if not pd.api.types.is_object_dtype(series):
-        return pd.api.types.is_numeric_dtype(series)
+    if pd.api.types.is_numeric_dtype(series):
+        return True
+    if not (pd.api.types.is_object_dtype(series) or pd.api.types.is_string_dtype(series)):
+        return False
     non_null = series.dropna()
     if non_null.empty:
         return False
