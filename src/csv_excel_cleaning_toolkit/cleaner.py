@@ -6,11 +6,11 @@ from typing import Any
 
 import pandas as pd
 import pandera.pandas as pa
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field
 
 COLUMN_RE = re.compile(r"[^a-zA-Z0-9]+")
 EMAIL_RE = re.compile(r"email", re.IGNORECASE)
-EMAIL_ADAPTER = TypeAdapter(str)
+EMAIL_FULL_RE = re.compile(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$")
 
 
 class CleaningOptions(BaseModel):
@@ -249,11 +249,7 @@ def _flag_invalid_email_columns(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict
 def _is_valid_email(value: Any) -> bool:
     if not isinstance(value, str) or not value.strip():
         return False
-    try:
-        EMAIL_ADAPTER.validate_python(value)
-    except ValueError:
-        return False
-    return "@" in value and "." in value.rsplit("@", maxsplit=1)[-1]
+    return bool(EMAIL_FULL_RE.match(value.strip()))
 
 
 def _coerce_numeric_columns(frame: pd.DataFrame, numeric_columns: list[str]) -> pd.DataFrame:
@@ -261,7 +257,7 @@ def _coerce_numeric_columns(frame: pd.DataFrame, numeric_columns: list[str]) -> 
     candidates = numeric_columns or [
         str(column)
         for column in cleaned.columns
-        if _looks_numeric_series(cleaned[column]) or _looks_numeric_name(str(column))
+        if _looks_numeric_series(cleaned[column])
     ]
     for column in candidates:
         if column in cleaned.columns:
@@ -313,7 +309,7 @@ def _flag_numeric_outliers(
         lower = q1 - multiplier * iqr
         upper = q3 + multiplier * iqr
         flag_column = f"{column}_is_outlier"
-        cleaned[flag_column] = (cleaned[column] < lower) | (cleaned[column] > upper)
+        cleaned[flag_column] = ((cleaned[column] < lower) | (cleaned[column] > upper)).fillna(False)
         counts[str(column)] = int(cleaned[flag_column].sum())
     return cleaned, counts
 
