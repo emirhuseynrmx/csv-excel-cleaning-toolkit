@@ -18,6 +18,7 @@ class CleaningOptions(BaseModel):
 
     normalize_headers: bool = True
     trim_text: bool = True
+    normalize_missing_tokens: bool = True
     normalize_emails: bool = True
     validate_emails: bool = True
     coerce_numeric: bool = True
@@ -25,6 +26,7 @@ class CleaningOptions(BaseModel):
     drop_duplicates: bool = True
     fill_missing: dict[str, str | int | float | bool] = Field(default_factory=dict)
     numeric_columns: list[str] = Field(default_factory=list)
+    missing_tokens: tuple[str, ...] = ("", "na", "n/a", "nan", "none", "null", "unknown", "error")
     outlier_iqr_multiplier: float = Field(default=1.5, gt=0)
 
 
@@ -135,7 +137,6 @@ def clean_frame(
     original = frame.copy()
     cleaned = frame.copy()
     renamed_columns: dict[str, str] = {}
-    missing_before = _missing_counts(cleaned)
 
     if options.normalize_headers:
         new_columns = [normalize_column_name(column) for column in cleaned.columns]
@@ -149,12 +150,16 @@ def clean_frame(
     if options.trim_text:
         cleaned = _trim_text_columns(cleaned)
 
+    if options.normalize_missing_tokens:
+        cleaned = _normalize_missing_tokens(cleaned, options.missing_tokens)
+
+    missing_before = _missing_counts(cleaned)
+
     if options.normalize_emails:
         cleaned = _normalize_email_columns(cleaned)
 
     if options.fill_missing:
-        with pd.option_context("future.no_silent_downcasting", True):
-            cleaned = cleaned.fillna(options.fill_missing).infer_objects(copy=False)
+        cleaned = cleaned.fillna(options.fill_missing)
 
     if options.coerce_numeric:
         cleaned = _coerce_numeric_columns(cleaned, options.numeric_columns)
@@ -212,7 +217,7 @@ def write_report(report: CleaningReport, path: Path) -> Path:
 
 def _trim_text_columns(frame: pd.DataFrame) -> pd.DataFrame:
     cleaned = frame.copy()
-    for column in cleaned.select_dtypes(include="object").columns:
+    for column in _text_columns(cleaned):
         cleaned[column] = cleaned[column].map(
             lambda value: value.strip() if isinstance(value, str) else value
         )
@@ -232,6 +237,18 @@ def _normalize_email_value(value: Any) -> Any:
         return value
     normalized = value.strip().lower()
     return normalized or pd.NA
+
+
+def _normalize_missing_tokens(frame: pd.DataFrame, missing_tokens: tuple[str, ...]) -> pd.DataFrame:
+    cleaned = frame.copy()
+    tokens = {token.strip().lower() for token in missing_tokens}
+    for column in _text_columns(cleaned):
+        cleaned[column] = cleaned[column].map(
+            lambda value: pd.NA
+            if isinstance(value, str) and value.strip().lower() in tokens
+            else value
+        )
+    return cleaned
 
 
 def _flag_invalid_email_columns(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
@@ -335,13 +352,25 @@ def _infer_column_types(frame: pd.DataFrame) -> dict[str, str]:
 
 def _looks_datetime_series(series: pd.Series) -> bool:
     non_null = series.dropna()
-    if non_null.empty or not pd.api.types.is_object_dtype(non_null):
+    if non_null.empty or not (
+        pd.api.types.is_object_dtype(non_null)
+        or pd.api.types.is_string_dtype(non_null)
+    ):
         return False
     sample = non_null.astype(str)
     if not sample.str.contains(r"\d{4}-\d{2}-\d{2}", regex=True).mean() >= 0.8:
         return False
     parsed_dates = pd.to_datetime(sample, errors="coerce", format="mixed")
     return bool(parsed_dates.notna().mean() >= 0.8)
+
+
+def _text_columns(frame: pd.DataFrame) -> list[Any]:
+    return [
+        column
+        for column in frame.columns
+        if pd.api.types.is_object_dtype(frame[column])
+        or pd.api.types.is_string_dtype(frame[column])
+    ]
 
 
 def _validate_cleaned_frame(frame: pd.DataFrame) -> list[str]:

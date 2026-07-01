@@ -1,0 +1,17 @@
+{
+  "normalize_headers": true,
+  "trim_text": true,
+  "normalize_missing_tokens": true,
+  "normalize_emails": true,
+  "validate_emails": true,
+  "coerce_numeric": true,
+  "flag_outliers": true,
+  "drop_duplicates": true,
+  "numeric_columns": ["quantity", "price_per_unit", "total_spent"],
+  "missing_tokens": ["", "na", "n/a", "nan", "none", "null", "unknown", "error"],
+  "outlier_iqr_multiplier": 1.5,
+  "fill_missing": {
+    "payment_method": "needs_review",
+    "location": "needs_review"
+  }
+}

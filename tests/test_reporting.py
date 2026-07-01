@@ -30,13 +30,24 @@ def test_build_report_view_scores_quality_issues() -> None:
 
 
 def test_render_typst_contains_client_sections() -> None:
-    cleaned, report = clean_frame(pd.DataFrame({"Email": ["alice@example.com"]}))
-    typst = render_typst(build_report_view(report, cleaned, title="Cleaning"))
+    cleaned, report = clean_frame(
+        pd.DataFrame(
+            {
+                "Transaction ID": ["TXN_1"],
+                "Item": ["Coffee"],
+                "Quantity": ["2"],
+                "Total Spent": ["4.0"],
+            }
+        )
+    )
+    view = build_report_view(report, cleaned, title="Cleaning")
+    typst = render_typst(view)
 
     assert "= Cleaning" in typst
     assert "Cleaning Summary" in typst
     assert "Renamed Columns" in typst
     assert "Cleaned Sample" in typst
+    assert view.sample_columns == ("transaction_id", "item", "quantity", "total_spent")
 
 
 def test_generate_sample_report_writes_typst_without_pdf(tmp_path: Path) -> None:

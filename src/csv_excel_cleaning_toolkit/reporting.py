@@ -25,18 +25,24 @@ class CleaningReportView(BaseModel):
     missing_after: dict[str, int]
     inferred_types: dict[str, str]
     validation_errors: tuple[str, ...]
+    sample_columns: tuple[str, ...]
     sample_records: tuple[dict[str, Any], ...]
     output_path: str | None
 
     @property
     def quality_score(self) -> float:
-        penalties = 0.0
-        penalties += min(self.duplicates_removed, 10) * 2.0
-        penalties += sum(self.invalid_email_counts.values()) * 6.0
-        penalties += sum(self.outlier_counts.values()) * 3.0
-        penalties += sum(self.missing_after.values()) * 1.5
-        penalties += len(self.validation_errors) * 10.0
-        return round(max(0.0, 100.0 - penalties), 1)
+        cells = max(1, self.output_rows * max(1, len(self.inferred_types)))
+        issue_cells = (
+            sum(self.invalid_email_counts.values())
+            + sum(self.outlier_counts.values())
+            + sum(self.missing_after.values())
+        )
+        issue_penalty = min(60.0, issue_cells / cells * 150.0)
+        duplicate_penalty = 0.0
+        if self.input_rows:
+            duplicate_penalty = min(15.0, self.duplicates_removed / self.input_rows * 100.0)
+        validation_penalty = min(20.0, len(self.validation_errors) * 5.0)
+        return round(max(0.0, 100.0 - issue_penalty - duplicate_penalty - validation_penalty), 1)
 
 
 def build_report_view(
@@ -45,6 +51,7 @@ def build_report_view(
     *,
     title: str,
 ) -> CleaningReportView:
+    sample_columns = tuple(_sample_columns(cleaned))
     return CleaningReportView(
         title=title,
         input_rows=report.input_rows,
@@ -56,7 +63,8 @@ def build_report_view(
         missing_after=report.missing_after,
         inferred_types=report.inferred_types,
         validation_errors=tuple(report.validation_errors),
-        sample_records=tuple(_sample_records(cleaned)),
+        sample_columns=sample_columns,
+        sample_records=tuple(_sample_records(cleaned, sample_columns)),
         output_path=report.output_path.as_posix() if report.output_path else None,
     )
 
@@ -69,7 +77,7 @@ def generate_sample_report(
     compile_pdf: bool = True,
 ) -> tuple[Path, Path | None]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    clean_output = output_dir / "customers_clean.csv"
+    clean_output = output_dir / "cleaned_data.csv"
     cleaned, report = clean_file(input_path, clean_output, CleaningOptions())
     view = build_report_view(report, cleaned, title=title)
     typ_path = output_dir / "cleaning_report.typ"
@@ -98,16 +106,20 @@ def render_typst(report: CleaningReportView) -> str:
         renamed_rows = "  [No renamed columns], [No change],"
     type_rows = "\n".join(
         f"  [{_typ_text(column)}], [{_typ_text(dtype)}], [{report.missing_after.get(column, 0)}],"
-        for column, dtype in report.inferred_types.items()
+        for column, dtype in list(report.inferred_types.items())[:9]
     )
-    sample_rows = "\n".join(_sample_row(record) for record in report.sample_records)
+    sample_rows = "\n".join(
+        _sample_row(record, report.sample_columns) for record in report.sample_records
+    )
+    sample_headers = "".join(f"  [*{_typ_text(column)}*]," for column in report.sample_columns)
+    sample_columns = "(" + ", ".join(["1fr"] * max(1, len(report.sample_columns))) + ")"
     warnings = _warnings(report)
     warning_rows = "\n".join(f"- {_typ_text(item)}" for item in warnings)
     if not warning_rows:
         warning_rows = "- No blocking issues were found."
 
-    return f"""#set page(margin: 42pt)
-#set text(font: "Arial", size: 10pt)
+    return f"""#set page(margin: 34pt)
+#set text(font: "Arial", size: 8.8pt)
 #set heading(numbering: none)
 
 #let accent = rgb("#1457d9")
@@ -118,21 +130,21 @@ def render_typst(report: CleaningReportView) -> str:
 #let panel = rgb("#f6f8fb")
 
 #let stat(label, value, color: accent) = block[
-  #rect(fill: panel, radius: 5pt, inset: 10pt, width: 100%)[
-    #text(size: 8pt, fill: muted, weight: "bold")[#upper(label)]
+  #rect(fill: panel, radius: 5pt, inset: 8pt, width: 100%)[
+    #text(size: 7pt, fill: muted, weight: "bold")[#upper(label)]
     #linebreak()
-    #text(size: 18pt, fill: color, weight: "bold")[#value]
+    #text(size: 15pt, fill: color, weight: "bold")[#value]
   ]
 ]
 
 = {_typ_text(report.title)}
 
 #text(fill: muted)[
-  Data cleaning summary for a CRM, spreadsheet, dashboard, or analytics import.
-  The report focuses on what changed and which fields still need review.
+  Kaggle dirty sales data cleaned into analysis-ready CSV. The report focuses on
+  normalized fields, invalid tokens, missing values, and review flags.
 ]
 
-#grid(columns: (1fr, 1fr, 1fr, 1fr), gutter: 8pt)[
+#grid(columns: (1fr, 1fr, 1fr, 1fr), gutter: 7pt)[
   #stat("Quality score", "{report.quality_score:.1f}/100", color: {score_color})
 ][
   #stat("Rows", "{report.input_rows} -> {report.output_rows}")
@@ -177,10 +189,10 @@ def render_typst(report: CleaningReportView) -> str:
 == Cleaned Sample
 
 #table(
-  columns: (1.2fr, 1.5fr, 1fr, 1fr),
+  columns: {sample_columns},
   inset: 5pt,
   stroke: rgb("#d0d5dd"),
-  [*Customer*], [*Email*], [*Spend*], [*Segment*],
+{sample_headers}
 {sample_rows}
 )
 """
@@ -221,21 +233,35 @@ def _warnings(report: CleaningReportView) -> list[str]:
     return warnings[:7]
 
 
-def _sample_records(frame: pd.DataFrame) -> list[dict[str, Any]]:
-    return frame.where(pd.notna(frame), None).head(6).to_dict(orient="records")
+def _sample_records(frame: pd.DataFrame, columns: tuple[str, ...]) -> list[dict[str, Any]]:
+    sample = frame
+    if columns:
+        sample = sample.dropna(subset=list(columns), how="any")
+        if len(sample) < 4:
+            sample = frame
+    return sample.where(pd.notna(sample), None).head(4).to_dict(orient="records")
 
 
-def _sample_row(record: dict[str, Any]) -> str:
-    customer = record.get("customer_name") or record.get("name") or ""
-    email = record.get("email_address") or record.get("email") or ""
-    spend = record.get("total_spend") or record.get("spend") or ""
-    segment = record.get("segment") or record.get("status") or ""
-    return (
-        f"  [{_typ_text(customer)}],"
-        f" [{_typ_text(email)}],"
-        f" [{_typ_text(spend)}],"
-        f" [{_typ_text(segment)}],"
-    )
+def _sample_columns(frame: pd.DataFrame) -> list[str]:
+    preferred = [
+        "transaction_id",
+        "item",
+        "quantity",
+        "total_spent",
+        "payment_method",
+        "location",
+        "customer_name",
+        "email_address",
+        "total_spend",
+        "segment",
+    ]
+    columns = [column for column in preferred if column in frame.columns]
+    columns.extend(str(column) for column in frame.columns if str(column) not in columns)
+    return columns[:4]
+
+
+def _sample_row(record: dict[str, Any], columns: tuple[str, ...]) -> str:
+    return "".join(f"  [{_typ_text(record.get(column))}]," for column in columns)
 
 
 def _score_color(score: float) -> str:

@@ -60,6 +60,24 @@ def test_clean_frame_fills_missing_values() -> None:
     }
 
 
+def test_clean_frame_treats_dirty_tokens_as_missing() -> None:
+    frame = pd.DataFrame(
+        {
+            "Item": ["Coffee", "UNKNOWN", "ERROR"],
+            "Quantity": ["2", "ERROR", "5"],
+            "Total Spent": ["4.0", "UNKNOWN", "10.0"],
+        }
+    )
+
+    cleaned, report = clean_frame(frame)
+
+    assert cleaned["item"].isna().sum() == 2
+    assert cleaned["quantity"].isna().sum() == 1
+    assert cleaned["total_spent"].isna().sum() == 1
+    assert report.missing_before["item"] == 2
+    assert report.missing_after["quantity"] == 1
+
+
 def test_clean_frame_flags_invalid_emails_and_numeric_outliers() -> None:
     frame = pd.DataFrame(
         {

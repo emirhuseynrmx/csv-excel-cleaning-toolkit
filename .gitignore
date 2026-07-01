@@ -11,3 +11,5 @@ build/
 *.egg-info/
 outputs/*
 !outputs/.gitkeep
+!outputs/kaggle_cafe_sales/
+!outputs/kaggle_cafe_sales/**

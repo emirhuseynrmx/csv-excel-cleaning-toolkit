@@ -5,9 +5,9 @@
 
 Reusable Python toolkit for cleaning messy CSV and Excel files into analysis-ready outputs.
 
-Built for practical data automation work: normalize headers, trim messy strings,
-standardize emails, remove duplicates, fill missing values, and generate a clear
-cleaning report.
+The main demo uses Kaggle's **Cafe Sales - Dirty Data for Cleaning Training**
+dataset: 10,000 transaction rows with `UNKNOWN`, `ERROR`, missing categories,
+dirty numeric fields, and review-worthy totals.
 
 ## What It Does
 
@@ -16,6 +16,7 @@ cleaning report.
 - trims whitespace in text columns
 - normalizes email columns
 - validates email columns and adds `*_is_valid` quality flags
+- converts dirty tokens such as `UNKNOWN`, `ERROR`, `N/A`, and empty strings to missing values
 - coerces numeric-looking columns such as spend, price, amount, orders, and revenue
 - flags numeric outliers with IQR-based `*_is_outlier` columns
 - infers basic column types for the report
@@ -29,30 +30,37 @@ cleaning report.
 
 ```bash
 pip install -e ".[dev]"
-clean-data data/sample_customers.csv --out outputs/customers_clean.csv --report outputs/report.md
+clean-data data/kaggle_dirty_cafe_sales.csv \
+  --out outputs/kaggle_cafe_sales/cleaned_data.csv \
+  --report outputs/kaggle_cafe_sales/report.md
 ```
 
 Generate a PDF report with Typst:
 
 ```bash
-generate-cleaning-report data/sample_customers.csv --out outputs/sample_report
+generate-cleaning-report data/kaggle_dirty_cafe_sales.csv \
+  --out outputs/kaggle_cafe_sales \
+  --title "Kaggle Cafe Sales Dirty Data Cleaning Report"
 ```
 
-Sample report files:
+Report files:
 
-- `outputs/sample_report/cleaning_report.typ`
-- `outputs/sample_report/cleaning_report.pdf`
+- `outputs/kaggle_cafe_sales/cleaned_data.csv`
+- `outputs/kaggle_cafe_sales/cleaning_report.typ`
+- `outputs/kaggle_cafe_sales/cleaning_report.pdf`
 
-![Sample cleaning report](docs/assets/cleaning-report-preview.png)
+![Kaggle cafe sales cleaning report](docs/assets/cleaning-report-preview.png)
+
+Dataset source: [Cafe Sales - Dirty Data for Cleaning Training](https://www.kaggle.com/datasets/ahmedmohamed2003/cafe-sales-dirty-data-for-cleaning-training)
 
 Use a cleaning profile:
 
 ```bash
 clean-data \
-  data/sample_customers.csv \
-  --profile examples/customer_profile.json \
-  --out outputs/customers_clean.xlsx \
-  --report outputs/report.md
+  data/kaggle_dirty_cafe_sales.csv \
+  --profile examples/cafe_sales_profile.json \
+  --out outputs/kaggle_cafe_sales/cleaned_with_profile.xlsx \
+  --report outputs/kaggle_cafe_sales/profile_report.md
 ```
 
 ## Example Output
