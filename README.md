@@ -1,4 +1,9 @@
-# CSV Excel Cleaning Toolkit
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <img src="assets/logo-light.svg" alt="CSV &amp; Excel Cleaning Toolkit" width="620">
+  </picture>
+</h1>
 
 [![CI](https://github.com/emirhuseynrmx/csv-excel-cleaning-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/emirhuseynrmx/csv-excel-cleaning-toolkit/actions)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
