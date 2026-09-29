@@ -1,7 +1,7 @@
 <h1>
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
-    <img src="assets/logo-light.svg" alt="CSV &amp; Excel Cleaning Toolkit" width="620">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.svg">
+    <img src="docs/logo-light.svg" alt="CSV &amp; Excel Cleaning Toolkit" width="620">
   </picture>
 </h1>
 
